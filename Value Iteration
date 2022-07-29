@@ -1,0 +1,224 @@
+# Implémentation de différentes politiques
+
+## Intro
+
+### Import
+
+import numpy as np
+import random
+import pandas as pd
+
+### Objet : Markov Decision Process
+
+class MarkovDecisionProcess:
+    
+    def __init__(self,N,S,A,Lambda,alpha,gamma,mu):
+        #self.nr=0
+        #self.np=0
+        #self.nt=0
+        self.N=N #Le nombre d'instances disponible
+        self.S=S #Les différents états
+        self.A=A #Les différents actions stockées dans un tableau (A[s] sera l'ensemble des actions de l'action s)
+        self.R=dict() #Les rewards
+        self.P=dict() #Les différentes proba
+        self.T=dict() #Les différents taux de transition
+        
+        #Les taux de transition:
+        self.Lambda=Lambda #le taux de transition pour un nouveau job
+        self.alpha=alpha #le taux de transition pour l'initialisation
+        self.gamma=gamma #le taux de transition pour qu'un serveur s'éteint.
+        self.mu=mu #le taux de transition pour qu'un serveur warm accomplisse la requête #=10ms
+        self.U=(alpha+gamma+mu)*N+Lambda
+        
+      
+    def Reward(self,s):
+        if s not in self.R : #and self.nr <= 1000000
+            self.R[s]=Reward_aux(s)
+            #self.nr+=1
+        return self.R[s]
+
+    
+    def Trans(self,s_next,s,a):
+        if (s_next,s,a) not in self.T : #and self.nt <= 1000000
+            diff=np.array(s_next)-np.array(s)
+            if np.array_equal(diff,[0,0,-1,0]): #un serveur s'éteint
+                self.T[s_next,s,a]=(gamma*s[2]) # gamma*w_0 
+            elif np.array_equal(diff,[0,0,1,-1]): #un serveur busy-warm a fait une requête et devient warm
+                self.T[s_next,s,a]=(mu*s[3]) # mu*w_1
+            elif np.array_equal(diff,[-1,0,1,0]): #un serveur i_0 devient warm (fin du temps d'init)
+                self.T[s_next,s,a]=(alpha*s[0]) # alpha*i_0
+            elif np.array_equal(diff,[0,-1,0,1]): #un serveur i_1 devient warm-busy (fin du temps d'init)
+                self.T[s_next,s,a]=(alpha*s[1]) # alpha*i_1
+            elif np.array_equal(diff,[a,0,-1,1]): # et w_0>0 et l'action est faisable   #une nouvelle requête arrive, on allume a serveurs en i_0 et la nouvlle requête est réalisée par un serveur warm (précédemment w_0) qu'on met en w_1
+                self.T[s_next,s,a]=(Lambda)*int(s[0]+s[1]+s[2]+s[3]+a <= N)*int(s[2]>0) # Lambda
+            elif np.array_equal(diff,[a-1,1,0,0]): # et w_0=0 et (i_0>0 ou i_0= mais a>0) et l'action est faisable   #une nouvelle requête arrive, on allume a serveurs en i_0 et la nouvelle requête est réalisée par un serveur de i_0 qu'on met en i_1
+                self.T[s_next,s,a]=(Lambda)*int(s[0]+s[1]+s[2]+s[3]+a <= N)*int(s[2]==0)*int(s[0]>0 or (s[0]==0 and a>0)) # Lambda
+            elif np.array_equal(diff,[0,0,0,0]):
+                self.T[s_next,s,a]=(-(gamma*s[2]+mu*s[3]+alpha*s[0]+alpha*s[1]+Lambda*int(s[0]+s[1]+s[2]+s[3]+a <= N)*int(s[0]>0 or s[2]>0 or a>0)))
+            else:
+                self.T[s_next,s,a]=0
+        return self.T[s_next,s,a]
+
+    
+    def Proba(self,s_next,s,a):
+        if (s_next,s,a) not in self.P : #and self.np <= 1000000
+            if np.array_equal(s_next,s):
+                self.P[s_next,s,a]=1-(gamma*s[2]+mu*s[3]+alpha*s[0]+alpha*s[1]+Lambda*int(s[0]+s[1]+s[2]+s[3]+a<=N)*int(s[0]>0 or s[2]>0 or a>0))/(M.U)
+            else:
+                self.P[s_next,s,a]=M.Trans(s_next,s,a)/(M.U)
+        return self.P[s_next,s,a]
+
+### Création des différentes fonctions actions et reward en fonction des états
+
+C_1 = 1 #le coût de traîter une demande
+#C_2 = 10 #la pénalité de faire attendre le client
+
+
+def Reward_aux(s): #s=(i_0,i_1,w_0,w_1)
+    return(-((s[0]+s[1]+s[2]+s[3])*C_1+(s[1]*C_2)))
+
+def actions(s): #Les actions i.e. la valeur du delta qu'on peut choisir
+    actions=list()
+    if s[0]==0 and s[2]==0 and sum(s)<N:
+        for i in range(1,N+1-s[0]-s[1]-s[2]-s[3]):
+            actions.append(i)
+    else:
+        for i in range(N+1-s[0]-s[1]-s[2]-s[3]):
+            actions.append(i)
+    return(actions)
+
+### Variables N (nombre de serveurs disponible), de S (l'ensemble des états) et de A (l'ensemble des actions)
+
+N=10
+
+#Les états (on les crée globalement car ils ne changeront pas par la suite)
+
+S=list()
+for h in range(N+1):
+    for i in range(N-h+1):
+        for j in range(N-h-i+1):
+            for k in range(N-h-i-j+1):
+                S.append((h,i,j,k))
+
+#Les actions (idem)
+
+A=[]
+for h in range(N+1):
+    for i in range(N-h+1):
+        for j in range(N-h-i+1):
+            for k in range(N-h-i-j+1):
+                A.append(actions([h,i,j,k]))
+
+### Créations des différentes variables
+
+Lambda=N/2 #le taux de transition pour un nouveau job
+alpha=0.1 #le taux de transition pour l'initialisation
+gamma=0.01 #le taux de transition pour qu'un serveur s'éteint.
+mu=1 #le taux de transition pour qu'un serveur warm accomplisse la requête #=10ms
+
+M = MarkovDecisionProcess(N,S,A,Lambda,alpha,gamma,mu)
+
+max_iter = 1000  # Maximum number of iterations
+discount = 0.99
+
+## Programme Value iteration
+
+### Création de la matrice identité
+
+I=np.eye(len(M.S))
+
+### Début du programme Value Iteration
+
+V = np.zeros(len(S))  # Initialize values
+V_new = np.zeros(len(S))
+pi = np.zeros(len(S))
+
+#Les constantes pour les rewards
+C_1 = 1 #le coût de traîter une demande
+
+df=pd.DataFrame(S)
+mapping = {df.columns[0]: 'i_0', df.columns[1]: 'i_1', df.columns[2]:'w_0', df.columns[3]:'w_1'} 
+su = df.rename(columns=mapping) 
+
+H=[]
+K=[]
+
+delta = 1e-1  # Error tolerance
+
+
+for C_2 in range(1,11):
+    M=MarkovDecisionProcess(N,S,A,Lambda,alpha,gamma,mu)
+    
+    #Création du vecteur reward
+    
+    R=[]
+    for s in M.S:
+        R.append(M.Reward(s))
+    
+    max_diff = 10000 # For the while begin
+    
+#################################################    
+    
+    
+    compt = 0 # Compteur d'itérations
+
+    # Start value iteration
+    while compt < max_iter and max_diff > delta :
+
+        #update compteur
+        compt+=1
+
+        # Initialize max difference
+        max_diff = 0 
+        
+        P=np.zeros((len(M.S),len(M.S)))
+        for i in range(len(M.S)):
+            for a in actions(S[i]):
+                for j in range(len(M.S)):
+                    P[i][j]=M.Proba(S[j],S[i],a)
+                    
+                val=R+discount*(P@V)
+                if a == actions(S[i])[0]:
+                    V_new[i] = val[i]
+                    best_a = a                    
+                else:
+                    if V_new[i] < val[i]:
+                        V_new[i] = val[i]
+                        best_a = a
+                        
+            pi[i] = best_a #update best policy
+
+        # Update maximum difference
+        max_diff = max(abs(V - V_new))
+
+
+        print(max_diff)
+        print(compt)
+            
+        # Update value functions    
+        V = V_new.copy()
+        #print(s_0,pi[S.index(s_0)])
+
+        #s_0=état_next(s_0,pi[S.index(s_0)])
+    Serie=pd.Series(np.array(pi))
+    su=pd.concat([su,Serie.rename(C_2)],axis=1)
+    
+    for s in M.S:
+        print(C_2,s,pi[M.S.index(s)])
+        
+        
+#################################
+
+    H.append(V.copy())
+    if len(H)>1:
+        K.append(np.array(H[-1])-np.array(H[-2]))
+    else:
+        K.append(np.zeros(len(V)))
+    
+    V+=K[-1]
+    
+#################################
+
+
+su.to_excel(f'VI_N{N}_L{Lambda}_V2.xlsx')
+
