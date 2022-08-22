@@ -1,0 +1,171 @@
+# Implementation of different policies
+
+## Intro
+
+### Import
+
+import numpy as np
+import random
+import itertools as itt
+import pandas as pd
+
+### Creation of the different functions actions and rewards according to the states
+
+def Reward_aux(s,C_2): #s=(i_0,i_1,w_0,w_1)
+    return (-((s[0]+s[1]+s[3])+(s[1]*C_2)))
+
+def actions(s): #The actions i.e. the value of the delta that can be chosen
+    actions=list()
+    if s[0]==0 and s[2]==0 and sum(s)<N:
+        for i in range(1,N+1-s[0]-s[1]-s[2]-s[3]):
+            actions.append(i)
+    else:
+        for i in range(N+1-s[0]-s[1]-s[2]-s[3]):
+            actions.append(i)
+    return(actions)
+
+### Variables N (number of available servers), S (set of states) and A (set of actions)
+
+N=1000
+#policies to be tested
+
+pol=[]
+for i in range(51):
+    pol.append(i)
+
+nb=len(pol) #number of w_0* of different policies we want to test
+
+### Creation of different constants
+
+Lambda=N/10 #the transition rate to a new job
+alpha=0.1 #the transition rate for initialization
+gamma=0.01 #the transition rate for a server to shut down
+mu=1 #the transition rate for a warm server to complete the request #=10ms
+
+U=(alpha+gamma+mu)*N+Lambda
+
+discount = 0.99
+
+## Start of the Markov chain
+
+#Constants
+T=int(1e7) #Number of iterations in the Markov chain
+t_preview=1e7 #Number of iterations we won't count
+
+e0=np.array([1,0,0,0])
+e1=np.array([0,1,0,0])
+e2=np.array([0,0,1,0])
+e3=np.array([0,0,0,1])
+
+#lDP=list()
+
+# The costs we want to test
+
+L=[]
+L.append(1)
+L.append(101)
+
+#df=pd.DataFrame(S)
+#mapping = {df.columns[0]: 'i_0', df.columns[1]: 'i_1', df.columns[2]:'w_0', df.columns[3]:'w_1'} 
+#su = df.rename(columns=mapping)
+
+# list of costs according to C_2
+C=np.zeros((nb,len(L)))
+
+# list of occurrences of i0, i1, w0, w1
+
+D=np.zeros((nb,4))
+
+# list des probabilities
+#P=np.zeros((nb,len(L),4,N+1)) #P[C_2][0][k]=probabilities that we have k i_0 during the loop for the cost C_2
+
+for h in pol :
+    print('pol=',h)
+    #we count the cost and the probas when we don't move
+    X=np.array([0,0,0,int(Lambda)])
+    
+    #seed
+    random.seed(1)
+    
+    for t in range(-int(t_preview),T): #t corresponds to step t
+
+        a=h-X[0]-X[2]+1
+        if a<0:
+            a=0
+        else:
+            while a+X[0]+X[1]+X[2]+X[3]>N:
+                a-=1
+                
+        z=random.uniform(0,1)
+        
+        if int(t/1000000)==t/1000000:
+            print(t)
+            print('for the state',X)
+            print('action taken :',a)
+        
+        #arrival of a new request
+        if z<Lambda/U:                 
+            if X[2]>0:
+                X+=a*e0-e2+e3
+            elif X[2]==0 and X[0]>0:
+                X+=(a-1)*e0+e1
+            elif X[2]==0 and X[0]==0 and X[0]+X[1]+X[2]+X[3]<N:
+                X+=(a-1)*e0+e1
+            #else nothing happens
+        
+        #a server goes down
+        elif z<(Lambda+N*gamma)/U:      
+            if z<(Lambda+X[2]*gamma)/U:   #the rate that a server shuts down is w_0*gamma
+                X+=-e2
+            #else nothing happens
+            
+        #a server has just finished a job
+        elif z<(Lambda+N*gamma+N*mu)/U: 
+            if z<(Lambda+N*gamma+X[3]*mu)/U: #the rate that a server has just finished a job is w_1*mu
+                X+=e2-e3
+            
+        #an init server has just finished its initialization
+        else: 
+            if z<(Lambda+N*gamma+N*mu+X[0]*alpha)/U: #a server i0
+                X+=-e0+e2
+            elif z<(Lambda+N*gamma+N*mu+X[0]*alpha+X[1]*alpha)/U: #a server i1
+                X+=-e1+e3
+            #else nothing happens
+                
+        if t>=0:
+            for C_2 in L:
+                C[pol.index(h)][L.index(C_2)]+=(discount)**t*Reward_aux(X,C_2)
+            for i in range(4):
+                D[pol.index(h)][i]+=X[i]
+
+    #on normalise
+    
+    for i in range(4):
+        D[pol.index(h)][i]=D[pol.index(h)][i]/T
+    
+    
+    for C_2 in L:
+        C[pol.index(h)][L.index(C_2)]=C[pol.index(h)][L.index(C_2)]/T
+
+
+DE=pd.DataFrame(C)
+DP=pd.DataFrame(D)
+
+mapping_2 = {DE.columns[i] : L[i] for i in range(len(L))}
+DE = DE.rename(columns=mapping_2)
+
+mapping_3 = {DP.columns[0]: 'i_0', DP.columns[1]: 'i_1', DP.columns[2]:'w_0', DP.columns[3]:'w_1'} 
+DP = DP.rename(columns=mapping_3)
+
+DE=DE.assign(poli=pol)
+DE=DE.set_index('poli')
+
+DE.to_excel(f'N{N}_L=100_(a,g,m)=({alpha},{gamma},{mu})_T1e7_value_1st_version.xlsx')
+
+DP.to_excel(f'N{N}_L=100_(a,g,m)=({alpha},{gamma},{mu})_T1e7_proba_1st_version.xlsx')
+
+#$    for C_2 in L:
+#$        lDP[L.index(C_2)].to_excel(f'Proba_C_2_{C_2}_N10_L5_T1e7_empirique.xlsx')
+
+
+
