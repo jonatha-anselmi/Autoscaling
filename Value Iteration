@@ -1,4 +1,4 @@
-# Implémentation de différentes politiques
+# Implementation of different policies
 
 ## Intro
 
@@ -16,18 +16,18 @@ class MarkovDecisionProcess:
         #self.nr=0
         #self.np=0
         #self.nt=0
-        self.N=N #Le nombre d'instances disponible
-        self.S=S #Les différents états
-        self.A=A #Les différents actions stockées dans un tableau (A[s] sera l'ensemble des actions de l'action s)
-        self.R=dict() #Les rewards
-        self.P=dict() #Les différentes proba
-        self.T=dict() #Les différents taux de transition
+        self.N=N #The number of instances available
+        self.S=S #The different states
+        self.A=A #The different actions stored in an array (A[s] will be the set of actions of the action s)
+        self.R=dict() #The rewards
+        self.P=dict() #The different probabilities
+        self.T=dict() #The different transition rates
         
-        #Les taux de transition:
-        self.Lambda=Lambda #le taux de transition pour un nouveau job
-        self.alpha=alpha #le taux de transition pour l'initialisation
-        self.gamma=gamma #le taux de transition pour qu'un serveur s'éteint.
-        self.mu=mu #le taux de transition pour qu'un serveur warm accomplisse la requête #=10ms
+        #The transition rates:
+        self.Lambda=Lambda #the transition rate to a new job
+        self.alpha=alpha #the transition rate for initialization
+        self.gamma=gamma #the transition rate for a server to shut down
+        self.mu=mu #the transition rate for a warm server to complete the request #=10ms
         self.U=(alpha+gamma+mu)*N+Lambda
         
       
@@ -41,17 +41,17 @@ class MarkovDecisionProcess:
     def Trans(self,s_next,s,a):
         if (s_next,s,a) not in self.T : #and self.nt <= 1000000
             diff=np.array(s_next)-np.array(s)
-            if np.array_equal(diff,[0,0,-1,0]): #un serveur s'éteint
+            if np.array_equal(diff,[0,0,-1,0]): #a server goes down
                 self.T[s_next,s,a]=(gamma*s[2]) # gamma*w_0 
-            elif np.array_equal(diff,[0,0,1,-1]): #un serveur busy-warm a fait une requête et devient warm
+            elif np.array_equal(diff,[0,0,1,-1]): #a busy-warm server has made a request and becomes warm
                 self.T[s_next,s,a]=(mu*s[3]) # mu*w_1
-            elif np.array_equal(diff,[-1,0,1,0]): #un serveur i_0 devient warm (fin du temps d'init)
+            elif np.array_equal(diff,[-1,0,1,0]): #a server i_0 becomes warm (end of init time)
                 self.T[s_next,s,a]=(alpha*s[0]) # alpha*i_0
-            elif np.array_equal(diff,[0,-1,0,1]): #un serveur i_1 devient warm-busy (fin du temps d'init)
+            elif np.array_equal(diff,[0,-1,0,1]): #an i_1 server becomes warm-busy (end of init time)
                 self.T[s_next,s,a]=(alpha*s[1]) # alpha*i_1
-            elif np.array_equal(diff,[a,0,-1,1]): # et w_0>0 et l'action est faisable   #une nouvelle requête arrive, on allume a serveurs en i_0 et la nouvlle requête est réalisée par un serveur warm (précédemment w_0) qu'on met en w_1
+            elif np.array_equal(diff,[a,0,-1,1]): # and w_0>0 and the action is feasible #a new request arrives, we turn on a server in i_0 and the new request is realized by a warm server (previously w_0) that we put in w_1
                 self.T[s_next,s,a]=(Lambda)*int(s[0]+s[1]+s[2]+s[3]+a <= N)*int(s[2]>0) # Lambda
-            elif np.array_equal(diff,[a-1,1,0,0]): # et w_0=0 et (i_0>0 ou i_0= mais a>0) et l'action est faisable   #une nouvelle requête arrive, on allume a serveurs en i_0 et la nouvelle requête est réalisée par un serveur de i_0 qu'on met en i_1
+            elif np.array_equal(diff,[a-1,1,0,0]): # and w_0=0 and (i_0>0 or i_0= but a>0) and the action is feasible #a new request arrives, we turn on a server in i_0 and the new request is carried out by a server in i_0 that we put in i_1
                 self.T[s_next,s,a]=(Lambda)*int(s[0]+s[1]+s[2]+s[3]+a <= N)*int(s[2]==0)*int(s[0]>0 or (s[0]==0 and a>0)) # Lambda
             elif np.array_equal(diff,[0,0,0,0]):
                 self.T[s_next,s,a]=(-(gamma*s[2]+mu*s[3]+alpha*s[0]+alpha*s[1]+Lambda*int(s[0]+s[1]+s[2]+s[3]+a <= N)*int(s[0]>0 or s[2]>0 or a>0)))
@@ -68,16 +68,16 @@ class MarkovDecisionProcess:
                 self.P[s_next,s,a]=M.Trans(s_next,s,a)/(M.U)
         return self.P[s_next,s,a]
 
-### Création des différentes fonctions actions et reward en fonction des états
+### Creation of the different functions actions and rewards according to the states
 
-C_1 = 1 #le coût de traîter une demande
-#C_2 = 10 #la pénalité de faire attendre le client
+C_1 = 1 #the cost of processing a request
+#C_2 = 10 #the penalty for keeping the customer waiting
 
 
 def Reward_aux(s): #s=(i_0,i_1,w_0,w_1)
     return(-((s[0]+s[1]+s[2]+s[3])*C_1+(s[1]*C_2)))
 
-def actions(s): #Les actions i.e. la valeur du delta qu'on peut choisir
+def actions(s): #the actions i.e. the delta value that can be chosen
     actions=list()
     if s[0]==0 and s[2]==0 and sum(s)<N:
         for i in range(1,N+1-s[0]-s[1]-s[2]-s[3]):
@@ -87,11 +87,11 @@ def actions(s): #Les actions i.e. la valeur du delta qu'on peut choisir
             actions.append(i)
     return(actions)
 
-### Variables N (nombre de serveurs disponible), de S (l'ensemble des états) et de A (l'ensemble des actions)
+### Variables N (number of available servers), S (set of states) and A (set of actions)
 
 N=10
 
-#Les états (on les crée globalement car ils ne changeront pas par la suite)
+#States (we create them globally because they will not change afterwards)
 
 S=list()
 for h in range(N+1):
@@ -100,7 +100,7 @@ for h in range(N+1):
             for k in range(N-h-i-j+1):
                 S.append((h,i,j,k))
 
-#Les actions (idem)
+#Actions (idem)
 
 A=[]
 for h in range(N+1):
@@ -109,12 +109,12 @@ for h in range(N+1):
             for k in range(N-h-i-j+1):
                 A.append(actions([h,i,j,k]))
 
-### Créations des différentes variables
+### Creation of the different variables
 
-Lambda=N/2 #le taux de transition pour un nouveau job
-alpha=0.1 #le taux de transition pour l'initialisation
-gamma=0.01 #le taux de transition pour qu'un serveur s'éteint.
-mu=1 #le taux de transition pour qu'un serveur warm accomplisse la requête #=10ms
+Lambda=N/2 #the transition rate to a new job
+alpha=0.1 #the transition rate for initialization
+gamma=0.01 #the transition rate for a server to shut down
+mu=1 #the transition rate for a warm server to complete the request #=10ms
 
 M = MarkovDecisionProcess(N,S,A,Lambda,alpha,gamma,mu)
 
@@ -123,18 +123,19 @@ discount = 0.99
 
 ## Programme Value iteration
 
-### Création de la matrice identité
+### Creation of the identity matrix
 
 I=np.eye(len(M.S))
 
-### Début du programme Value Iteration
+### Start of the Value Iteration program
 
 V = np.zeros(len(S))  # Initialize values
 V_new = np.zeros(len(S))
 pi = np.zeros(len(S))
 
-#Les constantes pour les rewards
-C_1 = 1 #le coût de traîter une demande
+# The constants for the rewards
+
+C_1 = 1 #the cost of processing a request
 
 df=pd.DataFrame(S)
 mapping = {df.columns[0]: 'i_0', df.columns[1]: 'i_1', df.columns[2]:'w_0', df.columns[3]:'w_1'} 
@@ -149,7 +150,7 @@ delta = 1e-1  # Error tolerance
 for C_2 in range(1,11):
     M=MarkovDecisionProcess(N,S,A,Lambda,alpha,gamma,mu)
     
-    #Création du vecteur reward
+    #Creation of the reward vector
     
     R=[]
     for s in M.S:
@@ -160,7 +161,7 @@ for C_2 in range(1,11):
 #################################################    
     
     
-    compt = 0 # Compteur d'itérations
+    compt = 0 # Iteration counter
 
     # Start value iteration
     while compt < max_iter and max_diff > delta :
